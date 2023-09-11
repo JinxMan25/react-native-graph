@@ -13,7 +13,7 @@ import type { StaticLineGraphProps } from './LineGraphProps'
 export function StaticLineGraph({
   points: allPoints,
   range,
-  color,
+  colors,
   lineThickness = 3,
   enableFadeInMask,
   style,
@@ -31,12 +31,12 @@ export function StaticLineGraph({
   )
 
   const pathRange: GraphPathRange = useMemo(
-    () => getGraphPathRange(allPoints, range),
+    () => getGraphPathRange(allPoints[0], range),
     [allPoints, range]
   )
 
   const pointsInRange = useMemo(
-    () => getPointsInRange(allPoints, pathRange),
+    () => getPointsInRange(allPoints[0], pathRange),
     [allPoints, pathRange]
   )
 
@@ -54,8 +54,8 @@ export function StaticLineGraph({
   )
 
   const gradientColors = useMemo(
-    () => [`${getSixDigitHex(color)}00`, `${getSixDigitHex(color)}ff`],
-    [color]
+    () => [`${getSixDigitHex(colors[0])}00`, `${getSixDigitHex(colors[0])}ff`],
+    [colors[0]]
   )
   const gradientFrom = useMemo(() => vec(0, 0), [])
   const gradientTo = useMemo(() => vec(width * 0.15, 0), [width])
@@ -67,7 +67,7 @@ export function StaticLineGraph({
         <Path
           path={path}
           strokeWidth={lineThickness}
-          color={enableFadeInMask ? undefined : color}
+          color={enableFadeInMask ? undefined : colors[0]}
           style="stroke"
           strokeJoin="round"
           strokeCap="round"
@@ -90,3 +90,4 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 })
+

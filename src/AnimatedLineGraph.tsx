@@ -55,13 +55,15 @@ const INDICATOR_PULSE_BLUR_RADIUS_BIG =
 
 export function AnimatedLineGraph({
   points: allPoints,
-  color,
+  colors,
   gradientFillColors,
-  lineThickness = 3,
+  lineThickness = 1.5,
   range,
   enableFadeInMask,
   enablePanGesture = false,
   onPointSelected,
+  canvasStyle,
+  containerStyle,
   onGestureStart,
   onGestureEnd,
   panGestureDelay = 300,
@@ -78,15 +80,17 @@ export function AnimatedLineGraph({
 }: AnimatedLineGraphProps): React.ReactElement {
   const [width, setWidth] = useState(0)
   const [height, setHeight] = useState(0)
-  const interpolateProgress = useValue(0)
+  const interpolateProgress1 = useValue(0)
+  const interpolateProgresses = Array(allPoints.length).fill(0).map((_, index) => useValue(0))
+  const [panned, setPanned] = useState(false);
 
   const { gesture, isActive, x } = usePanGesture({
     enabled: enablePanGesture,
     holdDuration: panGestureDelay,
   })
-  const circleX = useSharedValue(0)
-  const circleY = useSharedValue(0)
-  const pathEnd = useSharedValue(0)
+  const circleXs = Array(allPoints.length).fill(0).map((_, idx) => useSharedValue(0))
+  const circleYs = Array(allPoints.length).fill(0).map((_, idx) => useSharedValue(0))
+  const pathEnds = Array(allPoints.length).fill(0).map((_, idx) => useSharedValue(1))
   const indicatorRadius = useSharedValue(enableIndicator ? INDICATOR_RADIUS : 0)
   const indicatorBorderRadius = useDerivedValue(
     () => indicatorRadius.value * INDICATOR_BORDER_MULTIPLIER
@@ -111,13 +115,15 @@ export function AnimatedLineGraph({
     return 0
   })
 
-  const positions = useDerivedValue(() => [
-    0,
-    Math.min(0.15, pathEnd.value),
-    pathEnd.value,
-    pathEnd.value,
-    1,
-  ])
+  const positions = pathEnds.map((_, index) => {
+   return useDerivedValue(() => [
+      0,
+      Math.min(0.15, pathEnds[index].value),
+      pathEnds[index].value,
+      pathEnds[index].value,
+      1,
+    ])
+  });
 
   const onLayout = useCallback(
     ({ nativeEvent: { layout } }: LayoutChangeEvent) => {
@@ -139,43 +145,61 @@ export function AnimatedLineGraph({
     return path
   }, [height, width])
 
-  const paths = useValue<{ from?: SkPath; to?: SkPath }>({})
+  const pathsValues = Array(allPoints.length).fill(0).map((_, index) => useValue<{ from?: SkPath; to?: SkPath }>({}))
   const gradientPaths = useValue<{ from?: SkPath; to?: SkPath }>({})
-  const commands = useSharedValue<PathCommand[]>([])
-  const [commandsChanged, setCommandsChanged] = useState(0)
   const pointSelectedIndex = useRef<number>()
 
-  const pathRange: GraphPathRange = useMemo(
-    () => getGraphPathRange(allPoints, range),
-    [allPoints, range]
-  )
+  const commands = Array(allPoints.length).fill('').map((item, index) => useSharedValue<PathCommand[]>([]))
+  var commandsChanged = Array(allPoints.length).fill('');
+  var setCommandsChanged = Array(allPoints.length).fill('');
 
-  const pointsInRange = useMemo(
-    () => getPointsInRange(allPoints, pathRange),
-    [allPoints, pathRange]
-  )
+  allPoints.forEach((points, index) => {
+    const [_commandsChanged, _setCommandsChanged] = useState(0)
+    commandsChanged[index] = _commandsChanged;
+    setCommandsChanged[index] = _setCommandsChanged;
+  });
+
+  const pathRanges: Array<GraphPathRange> = allPoints.map((_points, index) => {
+    return useMemo(
+      () => getGraphPathRange(allPoints[index], range),
+      [_points, range]
+    )
+  });
+
+  const pointsInRanges = allPoints.map((_points, index) => {
+    return useMemo(
+      () => getPointsInRange(allPoints[index], pathRanges[index]),
+      [_points, range]
+    )
+  });
 
   const drawingWidth = useMemo(
     () => width - 2 * horizontalPadding,
     [horizontalPadding, width]
   )
 
-  const lineWidth = useMemo(() => {
-    const lastPoint = pointsInRange[pointsInRange.length - 1]
+  const lineWidths = allPoints.map((_points, index) => {
+    return useMemo(() => {
+      const lastPoint = pointsInRanges[index][pointsInRanges[index].length - 1]
 
-    if (lastPoint == null) return drawingWidth
+      if (lastPoint == null) return drawingWidth
 
-    return Math.max(getXInRange(drawingWidth, lastPoint.date, pathRange.x), 0)
-  }, [drawingWidth, pathRange.x, pointsInRange])
+      return Math.max(getXInRange(drawingWidth, lastPoint.date, pathRanges[index].x), 0)
+    }, [drawingWidth, pathRanges[index].x, pointsInRanges[index]])
+  });
 
-  const indicatorX = useDerivedValue(
-    () => Math.floor(lineWidth) + horizontalPadding
-  )
-  const indicatorY = useDerivedValue(
-    () => getYForX(commands.value, indicatorX.value) || 0
-  )
+  const indicatorXs = lineWidths.map((lineWidth) => {
+    return useDerivedValue(
+      () => Math.floor(lineWidth) + horizontalPadding
+    )
+  });
+  const indicatorYs = commands.map((command, index) => {
+    return useDerivedValue(
+      () => getYForX(commands[index].value, indicatorXs[index].value) || 0
+    )
+  });
 
-  const indicatorPulseColor = useMemo(() => hexToRgba(color, 0.4), [color])
+  const indicatorPulseColor = useMemo(() => hexToRgba(colors[0], 0.4), [colors[0]])
 
   const shouldFillGradient = gradientFillColors != null
 
@@ -184,140 +208,161 @@ export function AnimatedLineGraph({
       // view is not yet measured!
       return
     }
-    if (pointsInRange.length < 1) {
+    var emptyPoints = pointsInRanges.filter((points) => points.length < 1)
+    if (emptyPoints.length > 0) {
       // points are still empty!
       return
     }
 
-    let path
-    let gradientPath
+    let paths = Array(allPoints.length).fill(0)
+    let _gradientPaths = Array(allPoints.length).fill(null)
 
-    const createGraphPathProps = {
-      pointsInRange,
-      range: pathRange,
-      horizontalPadding,
-      verticalPadding,
-      canvasHeight: height,
-      canvasWidth: width,
-    }
+    const createGraphPathProps = allPoints.map((points, index) => {
+      return {
+        pointsInRange: pointsInRanges[index],
+        range: pathRanges[index],
+        horizontalPadding,
+        verticalPadding,
+        canvasHeight: height,
+        canvasWidth: width,
+      }
+    });
 
     if (shouldFillGradient) {
       const { path: pathNew, gradientPath: gradientPathNew } =
-        createGraphPathWithGradient(createGraphPathProps)
+        createGraphPathWithGradient(createGraphPathProps[0])
 
-      path = pathNew
-      gradientPath = gradientPathNew
+      paths[0] = pathNew
+      gradientPaths[0] = gradientPathNew
     } else {
-      path = createGraphPath(createGraphPathProps)
+      createGraphPathProps.forEach((props, index) => {
+        paths[index] = createGraphPath(createGraphPathProps[index])
+      });
     }
 
-    commands.value = path.toCmds()
+    paths.forEach((path, index) => {
+      commands[index].value = paths[index].toCmds()
+    });
 
-    if (gradientPath != null) {
-      const previous = gradientPaths.current
+    if (_gradientPaths[0] != null) {
+      const previous = _gradientPaths[0].current
       let from: SkPath = previous.to ?? straightLine
-      if (previous.from != null && interpolateProgress.current < 1)
+      if (previous.from != null && interpolateProgresses[0].current < 1)
         from =
-          from.interpolate(previous.from, interpolateProgress.current) ?? from
+          from.interpolate(previous.from, interpolateProgresses[0].current) ?? from
 
-      if (gradientPath.isInterpolatable(from)) {
-        gradientPaths.current = {
+      if (gradientPaths[0].isInterpolatable(from)) {
+        gradientPaths[0].current = {
           from,
-          to: gradientPath,
+          to: _gradientPaths[0],
         }
       } else {
-        gradientPaths.current = {
-          from: gradientPath,
-          to: gradientPath,
+        gradientPaths[0].current = {
+          from: _gradientPaths[0],
+          to: _gradientPaths[0],
         }
       }
     }
 
-    const previous = paths.current
-    let from: SkPath = previous.to ?? straightLine
-    if (previous.from != null && interpolateProgress.current < 1)
-      from =
-        from.interpolate(previous.from, interpolateProgress.current) ?? from
+    const previousValues = pathsValues.map(path => path.current);
+    let fromValues: SkPath[] = previousValues.map(previousValue => previousValue.to ?? straightLine)
 
-    if (path.isInterpolatable(from)) {
-      paths.current = {
-        from,
-        to: path,
-      }
-    } else {
-      paths.current = {
-        from: path,
-        to: path,
-      }
-    }
+    previousValues.forEach((previousValue, index) => {
+      if (previousValue.from != null && interpolateProgresses[index].current < 1)
+        fromValues[index] =
+          fromValues[index].interpolate(previousValue.from, interpolateProgresses[index].current) ?? fromValues[index]
+    });
 
-    setCommandsChanged(commandsChanged + 1)
 
-    runSpring(
-      interpolateProgress,
-      { from: 0, to: 1 },
-      {
-        mass: 1,
-        stiffness: 500,
-        damping: 400,
-        velocity: 0,
+    paths.forEach((path, index) => {
+      if (path.isInterpolatable(fromValues[index])) {
+        pathsValues[index].current = {
+          from: fromValues[index],
+          to: paths[index],
+        }
+      } else {
+        pathsValues[index].current = {
+          from: paths[index],
+          to: paths[index],
+        }
       }
-    )
+    });
+
+    commandsChanged.forEach((_commandsChanged, index) => {
+      setCommandsChanged[index](_commandsChanged[index] + 1)
+    });
+
+    interpolateProgresses.forEach((interpolateProgress, index) => {
+      runSpring(
+        interpolateProgresses[index],
+        { from: 0, to: 1 },
+        {
+          mass: 1,
+          stiffness: 100,
+          damping: 200,
+          velocity: 50,
+        }
+      )
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     height,
     horizontalPadding,
-    interpolateProgress,
-    pathRange,
-    paths,
+    interpolateProgresses,
+    pathRanges,
+    pathsValues,
     shouldFillGradient,
     gradientPaths,
-    pointsInRange,
+    pointsInRanges,
     range,
     straightLine,
     verticalPadding,
     width,
   ])
 
-  const gradientColors = useMemo(() => {
-    if (enableFadeInMask) {
+  const gradientColorsValues = colors.map((color, index) => {
+    return useMemo(() => {
+      if (enableFadeInMask) {
+        return [
+          `${getSixDigitHex(color)}00`,
+          `${getSixDigitHex(color)}ff`,
+          `${getSixDigitHex(color)}ff`,
+          `${getSixDigitHex(color)}33`,
+          `${getSixDigitHex(color)}33`,
+        ]
+      }
       return [
-        `${getSixDigitHex(color)}00`,
-        `${getSixDigitHex(color)}ff`,
-        `${getSixDigitHex(color)}ff`,
+        color,
+        color,
+        color,
         `${getSixDigitHex(color)}33`,
         `${getSixDigitHex(color)}33`,
       ]
-    }
-    return [
-      color,
-      color,
-      color,
-      `${getSixDigitHex(color)}33`,
-      `${getSixDigitHex(color)}33`,
-    ]
-  }, [color, enableFadeInMask])
+    }, [color, enableFadeInMask])
+  });
+  
+  const paths = pathsValues.map((pathValue, index) => {
+    return useComputedValue(
+      () => {
+        const from = pathsValues[index].current.from ?? straightLine
+        const to = pathsValues[index].current.to ?? straightLine
 
-  const path = useComputedValue(
-    () => {
-      const from = paths.current.from ?? straightLine
-      const to = paths.current.to ?? straightLine
-
-      return to.interpolate(from, interpolateProgress.current)
-    },
-    // RN Skia deals with deps differently. They are actually the required SkiaValues that the derived value listens to, not react values.
-    [interpolateProgress]
-  )
-
+        return to.interpolate(from, interpolateProgresses[index].current)
+      },
+      // RN Skia deals with deps differently. They are actually the required SkiaValues that the derived value listens to, not react values.
+      [interpolateProgresses[index]]
+    )
+  });
+  
   const gradientPath = useComputedValue(
     () => {
       const from = gradientPaths.current.from ?? straightLine
       const to = gradientPaths.current.to ?? straightLine
 
-      return to.interpolate(from, interpolateProgress.current)
+      return to.interpolate(from, interpolateProgresses[0].current)
     },
     // RN Skia deals with deps differently. They are actually the required SkiaValues that the derived value listens to, not react values.
-    [interpolateProgress]
+    [interpolateProgresses]
   )
 
   const stopPulsating = useCallback(() => {
@@ -341,56 +386,62 @@ export function AnimatedLineGraph({
     )
   }, [indicatorPulseAnimation])
 
-  const setFingerPoint = useCallback(
-    (fingerX: number) => {
-      const fingerXInRange = Math.max(fingerX - horizontalPadding, 0)
+  const setFingerPoints = allPoints.map((_, index) => {
+    return useCallback(
+      (fingerX: number) => {
+        const fingerXInRange = Math.max(fingerX - horizontalPadding, 0)
 
-      const index = Math.round(
-        (fingerXInRange /
-          getXInRange(
-            drawingWidth,
-            pointsInRange[pointsInRange.length - 1]!.date,
-            pathRange.x
-          )) *
-          (pointsInRange.length - 1)
-      )
-      const pointIndex = Math.min(Math.max(index, 0), pointsInRange.length - 1)
+        const idx = Math.round(
+          (fingerXInRange /
+            getXInRange(
+              drawingWidth,
+              pointsInRanges[index][pointsInRanges[index].length - 1]!.date,
+              pathRanges[index].x
+            )) *
+            (pointsInRanges[index].length - 1)
+        )
+        const pointIndex = Math.min(Math.max(idx, 0), pointsInRanges[index].length - 1)
 
-      if (pointSelectedIndex.current !== pointIndex) {
-        const dataPoint = pointsInRange[pointIndex]
-        pointSelectedIndex.current = pointIndex
+        if (pointSelectedIndex.current !== pointIndex) {
+          const dataPoint = pointsInRanges[index][pointIndex]
+          pointSelectedIndex.current = pointIndex
 
-        if (dataPoint != null) {
-          onPointSelected?.(dataPoint)
+          if (dataPoint != null) {
+            onPointSelected?.(dataPoint)
+          }
         }
-      }
-    },
-    [
-      drawingWidth,
-      horizontalPadding,
-      onPointSelected,
-      pathRange.x,
-      pointsInRange,
-    ]
-  )
+      },
+      [
+        drawingWidth,
+        horizontalPadding,
+        onPointSelected,
+        pathRanges[index].x,
+        pointsInRanges[index],
+      ]
+    )
+  });
 
-  const setFingerX = useCallback(
+  const setFingerXs = allPoints.map((_, index) => {
+    return useCallback(
     (fingerX: number) => {
       'worklet'
 
-      const y = getYForX(commands.value, fingerX)
+      const y = getYForX(commands[index].value, fingerX)
 
       if (y != null) {
-        circleX.value = fingerX
-        circleY.value = y
+        circleXs[index].value = fingerX
+        circleYs[index].value = y
       }
 
-      if (isActive.value) pathEnd.value = fingerX / width
+      if (isActive.value) {
+        pathEnds[index].value = (fingerX / width)
+      }
     },
     // pathRange.x must be extra included in deps otherwise onPointSelected doesn't work, IDK why
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [circleX, circleY, isActive, pathEnd, pathRange.x, width, commands]
+    [circleXs[index], circleYs[index], isActive, pathEnds[index], pathRanges[index].x, width, commands[index]]
   )
+  });
 
   const setIsActive = useCallback(
     (active: boolean) => {
@@ -402,12 +453,12 @@ export function AnimatedLineGraph({
       })
 
       if (active) {
+        setPanned(true);
         onGestureStart?.()
         stopPulsating()
       } else {
         onGestureEnd?.()
-        pointSelectedIndex.current = undefined
-        pathEnd.value = 1
+        //pathEnd.value = 1
         startPulsating()
       }
     },
@@ -415,7 +466,7 @@ export function AnimatedLineGraph({
       indicatorRadius,
       onGestureEnd,
       onGestureStart,
-      pathEnd,
+      pathEnds[0],
       startPulsating,
       stopPulsating,
     ]
@@ -425,11 +476,13 @@ export function AnimatedLineGraph({
     () => x.value,
     (fingerX) => {
       if (isActive.value || fingerX) {
-        setFingerX(fingerX)
-        runOnJS(setFingerPoint)(fingerX)
+        allPoints.forEach((_, index) => {
+          setFingerXs[index](fingerX)
+          runOnJS(setFingerPoints[index])(fingerX)
+        });
       }
     },
-    [isActive, setFingerX, width, x]
+    [isActive, setFingerXs, width, x]
   )
 
   useAnimatedReaction(
@@ -441,9 +494,12 @@ export function AnimatedLineGraph({
   )
 
   useEffect(() => {
-    if (pointsInRange.length !== 0 && commands.value.length !== 0)
-      pathEnd.value = 1
-  }, [commands, pathEnd, pointsInRange.length])
+    allPoints.forEach((_, index) => {
+      if (pointsInRanges[index].length !== 0 && commands[index].value.length !== 0) {
+        pathEnds[index].value = 1
+      }
+    });
+  }, [commands, pathEnds, pointsInRanges.map(p => p.length)])
 
   useEffect(() => {
     if (indicatorPulsating) {
@@ -457,12 +513,14 @@ export function AnimatedLineGraph({
     paddingBottom: BottomAxisLabel != null ? 20 : 0,
   }
 
-  const indicatorVisible = enableIndicator && commandsChanged > 0
+  const indicatorsVisible = commandsChanged.map((changed) => {
+    return enableIndicator && changed > 0
+  });
 
   return (
     <View {...props}>
       <GestureDetector gesture={gesture}>
-        <Reanimated.View style={[styles.container, axisLabelContainerStyle]}>
+        <Reanimated.View style={[styles.container, axisLabelContainerStyle, containerStyle]}>
           {/* Top Label (max price) */}
           {TopAxisLabel != null && (
             <View style={styles.axisRow}>
@@ -473,77 +531,54 @@ export function AnimatedLineGraph({
           {/* Actual Skia Graph */}
           <View style={styles.container} onLayout={onLayout}>
             {/* Fix for react-native-skia's incorrect type declarations */}
-            <Canvas style={styles.svg}>
-              <Group>
-                <Path
-                  // @ts-expect-error
-                  path={path}
-                  strokeWidth={lineThickness}
-                  style="stroke"
-                  strokeJoin="round"
-                  strokeCap="round"
-                >
-                  <LinearGradient
-                    start={vec(0, 0)}
-                    end={vec(width, 0)}
-                    colors={gradientColors}
-                    positions={positions}
-                  />
-                </Path>
+            <Canvas style={[styles.svg, canvasStyle]}>
+              {paths.map((path, index) => {
+                return (
+                  <Group>
+                    <Path
+                      path={path}
+                      strokeWidth={lineThickness}
+                      style="stroke"
+                      strokeJoin="round"
+                      strokeCap="round"
+                    >
+                      <LinearGradient
+                        start={vec(0, 0)}
+                        end={vec(width, 0)}
+                        colors={gradientColorsValues[index]}
+                        positions={positions[index]}
+                      />
+                    </Path>
 
-                {shouldFillGradient && (
-                  <Path
-                    // @ts-expect-error
-                    path={gradientPath}
-                  >
-                    <LinearGradient
-                      start={vec(0, 0)}
-                      end={vec(0, height)}
-                      colors={gradientFillColors}
+                    {shouldFillGradient && (
+                      <Path
+                        path={gradientPath}
+                      >
+                        <LinearGradient
+                          start={vec(0, 0)}
+                          end={vec(0, height)}
+                          colors={gradientFillColors}
+                        />
+                      </Path>
+                    )}
+                  </Group>
+                );
+              })}
+
+              {allPoints.map((_, index) => {
+                return (
+                  SelectionDot != null && (
+                    <SelectionDot
+                      isActive={isActive}
+                      color={colors[index]}
+                      lineThickness={lineThickness}
+                      circleX={circleXs[index]}
+                      circleY={circleYs[index]}
                     />
-                  </Path>
-                )}
-              </Group>
+                  )
+                );
+              })}
 
-              {SelectionDot != null && (
-                <SelectionDot
-                  isActive={isActive}
-                  color={color}
-                  lineThickness={lineThickness}
-                  circleX={circleX}
-                  circleY={circleY}
-                />
-              )}
-
-              {indicatorVisible && (
-                <Group>
-                  {indicatorPulsating && (
-                    <Circle
-                      cx={indicatorX}
-                      cy={indicatorY}
-                      r={indicatorPulseRadius}
-                      opacity={indicatorPulseOpacity}
-                      color={indicatorPulseColor}
-                      style="fill"
-                    />
-                  )}
-
-                  <Circle
-                    cx={indicatorX}
-                    cy={indicatorY}
-                    r={indicatorBorderRadius}
-                    color="#ffffff"
-                  >
-                    <Shadow dx={2} dy={2} color="rgba(0,0,0,0.2)" blur={4} />
-                  </Circle>
-                  <Circle
-                    cx={indicatorX}
-                    cy={indicatorY}
-                    r={indicatorRadius}
-                    color={color}
-                  />
-                </Group>
-              )}
             </Canvas>
           </View>
 
@@ -562,11 +597,16 @@ export function AnimatedLineGraph({
 const styles = StyleSheet.create({
   svg: {
     flex: 1,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
   },
   container: {
     flex: 1,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
   },
   axisRow: {
     height: 17,
   },
 })
+

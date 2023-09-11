@@ -1,5 +1,5 @@
 import type React from 'react'
-import type { ViewProps } from 'react-native'
+import type { ViewProps, StyleProp, ViewStyle } from 'react-native'
 import type { GraphPathRange } from './CreateGraphPath'
 import type { SharedValue } from 'react-native-reanimated'
 import type { Color } from '@shopify/react-native-skia'
@@ -13,7 +13,7 @@ export type GraphRange = Partial<GraphPathRange>
 
 export interface SelectionDotProps {
   isActive: SharedValue<boolean>
-  color: BaseLineGraphProps['color']
+  color: BaseLineGraphProps['colors'][0]
   lineThickness: BaseLineGraphProps['lineThickness']
   circleX: SharedValue<number>
   circleY: SharedValue<number>
@@ -23,7 +23,7 @@ interface BaseLineGraphProps extends ViewProps {
   /**
    * All points to be marked in the graph. Coordinate system will adjust to scale automatically.
    */
-  points: GraphPoint[]
+  points: GraphPoint[][]
   /**
    * Range of the graph's x and y-axis. The range must be greater
    * than the range given by the points.
@@ -32,7 +32,7 @@ interface BaseLineGraphProps extends ViewProps {
   /**
    * Color of the graph line (path)
    */
-  color: string
+  colors: string[]
   /**
    * (Optional) Colors for the fill gradient below the graph line
    */
@@ -47,6 +47,14 @@ interface BaseLineGraphProps extends ViewProps {
    * Enable the Fade-In Gradient Effect at the beginning of the Graph
    */
   enableFadeInMask?: boolean
+  /**
+   * Style for the Skia canvas element
+   */
+  canvasStyle?: StyleProp<ViewStyle>
+  /**
+   * Style for the View component that encloses Skia canvas element
+   */
+  containerStyle?: StyleProp<ViewStyle>
 }
 
 export type StaticLineGraphProps = BaseLineGraphProps & {
@@ -114,3 +122,4 @@ export type AnimatedLineGraphProps = BaseLineGraphProps & {
 export type LineGraphProps =
   | ({ animated: true } & AnimatedLineGraphProps)
   | ({ animated: false } & StaticLineGraphProps)
+

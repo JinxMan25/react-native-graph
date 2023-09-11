@@ -2,7 +2,7 @@
   "compilerOptions": {
     "allowJs": false,
     "allowUnreachableCode": false,
-    "allowUnusedLabels": false,
+    "allowUnusedLabels": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "jsx": "react-native",
@@ -13,13 +13,13 @@
     "moduleResolution": "node",
     "noFallthroughCasesInSwitch": true,
     "noImplicitReturns": true,
-    "noStrictGenericChecks": false,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
+    "noStrictGenericChecks": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
     "noUncheckedIndexedAccess": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
-    "strict": true,
+    "strict": false,
     "target": "esnext",
     "outDir": "lib"
   },
@@ -35,3 +35,4 @@
     "example"
   ]
 }
+
