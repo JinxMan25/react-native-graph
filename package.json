@@ -83,7 +83,8 @@
   "release-it": {
     "git": {
       "commitMessage": "chore: release ${version}",
-      "tagName": "v${version}"
+      "tagName": "v${version}",
+      "requireUpstream": "false"
     },
     "npm": {
       "publish": true
