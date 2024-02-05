@@ -534,7 +534,7 @@ export function AnimatedLineGraph({
             <Canvas style={[styles.svg, canvasStyle]}>
               {paths.map((path, index) => {
                 return (
-                  <Group>
+                  <Group key={index}>
                     <Path
                       path={path}
                       strokeWidth={lineThickness}
@@ -569,6 +569,7 @@ export function AnimatedLineGraph({
                 return (
                   SelectionDot != null && (
                     <SelectionDot
+                      key={index}
                       isActive={isActive}
                       color={colors[index]}
                       lineThickness={lineThickness}
