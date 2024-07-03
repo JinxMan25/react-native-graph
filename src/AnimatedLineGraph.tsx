@@ -407,7 +407,7 @@ export function AnimatedLineGraph({
           pointSelectedIndex.current = pointIndex
 
           if (dataPoint != null) {
-            onPointSelected?.(dataPoint)
+            onPointSelected?.(dataPoint, index)
           }
         }
       },
