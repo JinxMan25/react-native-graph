@@ -147,7 +147,7 @@ export function AnimatedLineGraph({
 
   const pathsValues = Array(allPoints.length).fill(0).map((_, index) => useValue<{ from?: SkPath; to?: SkPath }>({}))
   const gradientPaths = useValue<{ from?: SkPath; to?: SkPath }>({})
-  const pointSelectedIndex = useRef<number>()
+  const pointSelectedIndex = useRef<Array<number>>(Array(allPoints.length).fill(0))
 
   const commands = Array(allPoints.length).fill('').map((item, index) => useSharedValue<PathCommand[]>([]))
   var commandsChanged = Array(allPoints.length).fill('');
@@ -402,9 +402,9 @@ export function AnimatedLineGraph({
         )
         const pointIndex = Math.min(Math.max(idx, 0), pointsInRanges[index].length - 1)
 
-        if (pointSelectedIndex.current !== pointIndex) {
+        if (pointSelectedIndex.current[index] !== pointIndex) {
           const dataPoint = pointsInRanges[index][pointIndex]
-          pointSelectedIndex.current = pointIndex
+          pointSelectedIndex.current[index] = pointIndex
 
           if (dataPoint != null) {
             onPointSelected?.(dataPoint, index)
