@@ -1,7 +1,7 @@
 {
-  "name": "@sigalskajfmanationshop/react-native-graph-multiline",
+  "name": "@sigmanationshop/react-native-graph-multiline",
   "private": true,
-  "version": "2.2.3",
+  "version": "2.2.2",
   "description": "📈 Beautiful, high-performance Graphs and Charts for React Native",
   "main": "lib/commonjs/index",
   "module": "lib/module/index",
